@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from d2l import torch as d2l
 
-from quantizer_tr import QuantizerTr
+from quantizer import * 
 
 batch_size, num_steps = 32, 35
 train_iter, vocab = d2l.load_data_time_machine(batch_size, num_steps)
@@ -24,7 +24,7 @@ def grad_clipping(net, theta):
             param.grad[:] *= theta / norm
 
 
-def predict(prefix, num_preds, net, vocab, device):
+def predict_output(prefix, num_preds, net, vocab, device):
     """Generate new characters following the `prefix`."""
     state = net.begin_state(batch_size=1, device=device)
     outputs = [vocab[prefix[0]]]
@@ -40,7 +40,7 @@ def predict(prefix, num_preds, net, vocab, device):
 
 
 
-def train_epoch(net, train_iter, loss, updater, device, quantizer, use_random_iter):
+def train_epoch(net, train_iter, loss, updater, device, stats, use_random_iter):
     """Train a net within one epoch (defined in Chapter 8)."""
     state, timer = None, d2l.Timer()
     metric = d2l.Accumulator(2)  # Sum of training loss, no. of tokens
@@ -62,13 +62,16 @@ def train_epoch(net, train_iter, loss, updater, device, quantizer, use_random_it
         X, y = X.to(device), y.to(device)
 
         # quantize before forward pass 
-        quantizer.quantize(net)
-        # forward pass 
+        original_weights = simulate_quantization(net, stats)
+        # forward pass on dequantized weights 
         y_hat, state = net(X, state)
-        # Dequantize after forward pass 
-        quantizer.dequantize(net)
 
+        # restore original weights
+        restore_original_weights(net, original_weights)
+
+        # loss gets calculated on original weights 
         l = loss(y_hat, y.long()).mean()
+
         if isinstance(updater, torch.optim.Optimizer):
             updater.zero_grad()
             l.backward()
@@ -79,13 +82,15 @@ def train_epoch(net, train_iter, loss, updater, device, quantizer, use_random_it
             grad_clipping(net, 1)
             # Since the `mean` function has been invoked
             updater(batch_size=1)
+
         metric.add(l * d2l.size(y), d2l.size(y))
     return math.exp(metric[0] / metric[1]), metric[1] / timer.stop()
 
 
-def train(net, train_iter, vocab, lr, num_epochs, device, quantizer,
+def train(net, train_iter, vocab, lr, num_epochs, device, stats,
               use_random_iter=False):
     """Train a model (defined in Chapter 8)."""
+
     loss = nn.CrossEntropyLoss()
     animator = d2l.Animator(xlabel='epoch', ylabel='perplexity',
                             legend=['train'], xlim=[10, num_epochs])
@@ -94,14 +99,17 @@ def train(net, train_iter, vocab, lr, num_epochs, device, quantizer,
         updater = torch.optim.SGD(net.parameters(), lr)
     else:
         updater = lambda batch_size: d2l.sgd(net.params, lr, batch_size)
-    predict = lambda prefix: predict(prefix, 50, net, vocab, device)
+
+    predict = lambda prefix: predict_output(prefix, 50, net, vocab, device)
+    
     # Train and predict
     for epoch in range(num_epochs):
-        ppl, speed = train_epoch(net, train_iter, loss, updater, device, quantizer,
+        ppl, speed = train_epoch(net, train_iter, loss, updater, device, stats,
                                      use_random_iter)
         if (epoch + 1) % 10 == 0:
             print(predict('time traveller'))
             animator.add(epoch + 1, [ppl])
+
     print(f'perplexity {ppl:.1f}, {speed:.1f} tokens/sec on {str(device)}')
     print(predict('time traveller'))
     print(predict('traveller'))
@@ -109,11 +117,13 @@ def train(net, train_iter, vocab, lr, num_epochs, device, quantizer,
 
 
 def main():
+    quantization_stats = {}
     num_inputs = vocab_size
     lstm_layer = nn.LSTM(num_inputs, num_hiddens)
     model = d2l.RNNModel(lstm_layer, len(vocab))
     model = model.to(device)
-    quantizer = QuantizerTr(0.23, 11)
 
-    train(model, train_iter, vocab, lr, num_epochs, device, quantizer)
+    train(model, train_iter, vocab, lr, num_epochs, device, quantization_stats)
+
+    # quantization_stats has gone through refinement process by now during training. 
 
