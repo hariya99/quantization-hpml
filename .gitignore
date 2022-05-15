@@ -134,3 +134,6 @@ dmypy.json
 
 # experimental 
 quantawaretrain.py
+
+# data 
+data/

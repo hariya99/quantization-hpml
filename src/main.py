@@ -1,16 +1,14 @@
 import torch
 from torch import nn
 from d2l import torch as d2l
+import math 
 
-from quantizer import * 
+from quantizer import *
 
 batch_size, num_steps = 32, 35
 train_iter, vocab = d2l.load_data_time_machine(batch_size, num_steps)
 
 vocab_size, num_hiddens, device = len(vocab), 256, d2l.try_gpu()
-num_epochs, lr = 500, 1
-
-
 
 def grad_clipping(net, theta):
     """Clip the gradient."""
@@ -41,7 +39,7 @@ def predict_output(prefix, num_preds, net, vocab, device):
 
 
 def train_epoch(net, train_iter, loss, updater, device, stats, use_random_iter):
-    """Train a net within one epoch (defined in Chapter 8)."""
+    """Train a net within one epoch"""
     state, timer = None, d2l.Timer()
     metric = d2l.Accumulator(2)  # Sum of training loss, no. of tokens
     for X, Y in train_iter:
@@ -89,7 +87,7 @@ def train_epoch(net, train_iter, loss, updater, device, stats, use_random_iter):
 
 def train(net, train_iter, vocab, lr, num_epochs, device, stats,
               use_random_iter=False):
-    """Train a model (defined in Chapter 8)."""
+    """Train a model"""
 
     loss = nn.CrossEntropyLoss()
     animator = d2l.Animator(xlabel='epoch', ylabel='perplexity',
@@ -115,15 +113,30 @@ def train(net, train_iter, vocab, lr, num_epochs, device, stats,
     print(predict('traveller'))
 
 
+num_epochs, lr = 500, 1
+num_inputs = vocab_size
 
-def main():
-    quantization_stats = {}
-    num_inputs = vocab_size
-    lstm_layer = nn.LSTM(num_inputs, num_hiddens)
-    model = d2l.RNNModel(lstm_layer, len(vocab))
-    model = model.to(device)
 
-    train(model, train_iter, vocab, lr, num_epochs, device, quantization_stats)
+lstm_layer = nn.LSTM(num_inputs, num_hiddens)
+model = d2l.RNNModel(lstm_layer, len(vocab))
+model = model.to(device)
+d2l.train_ch8(model, train_iter, vocab, lr, num_epochs, device)
 
-    # quantization_stats has gone through refinement process by now during training. 
 
+quantization_stats = {}
+lstm_layer = nn.LSTM(num_inputs, num_hiddens)
+model_qt = d2l.RNNModel(lstm_layer, len(vocab))
+model_qt = model_qt.to(device)
+
+train(model_qt, train_iter, vocab, lr, num_epochs, device, quantization_stats)
+
+
+
+size = calculate_size(model)
+print(size)
+
+
+size = calculate_size(model_qt, quantized=True)
+print(size)
+
+print(quantization_stats)
