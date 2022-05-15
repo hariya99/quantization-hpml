@@ -35,19 +35,22 @@ def get_scale_zero_point(min_val: float, max_val: float ,num_bits=8):
     return scale, zero_point
 
 
-def quantize_tensor(x: torch.tensor, num_bits=8, min_val=None, max_val=None):
+def quantize_tensor(x: torch.tensor, num_bits=8, scale=None, zero_point=None):
     
     """
     Quantizes a tensor, returns a named tuple in pytorch Qtensor format
     """
     
-    if not min_val and not max_val: 
-      min_val, max_val = x.min(), x.max()
+    if not scale and not zero_point:
+        min_val, max_val = x.min(), x.max()
+        scale, zero_point = get_scale_zero_point(min_val, max_val, num_bits)
+    
 
     qmin = 0.
     qmax = 2.**num_bits - 1.
 
-    scale, zero_point = get_scale_zero_point(min_val, max_val, num_bits)
+    # scale, zero_point = get_scale_zero_point(min_val, max_val, num_bits)
+    
     q_x = zero_point + x / scale
     q_x.clamp_(qmin, qmax).round_()
     q_x = q_x.round().byte()
