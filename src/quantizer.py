@@ -35,7 +35,7 @@ def get_scale_zero_point(min_val: float, max_val: float ,num_bits=8):
     return scale, zero_point
 
 
-def quantize_tensor(x: torch.tensor, num_bits=8, scale=None, zero_point=None):
+def quantize_tensor(x: torch.Tensor, num_bits=8, scale=None, zero_point=None):
     
     """
     Quantizes a tensor, returns a named tuple in pytorch Qtensor format
